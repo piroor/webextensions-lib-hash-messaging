@@ -66,7 +66,7 @@ const HashMessagingBG = (() => {
 
     let index = 0;
 
-    return new Promise(resolve => {
+    return new Promise(async resolve => {
       function onUpdated(updatedTabId, info, tab) {
         if (updatedTabId !== tabId || !info.url) return;
 
@@ -92,11 +92,10 @@ const HashMessagingBG = (() => {
 
       browser.tabs.onUpdated.addListener(onUpdated);
 
-      browser.tabs.get(tabId, tab => {
-        const url = new URL(tab.url);
-        const base = url.origin + url.pathname + url.search;
-        sendNext(base);
-      });
+      const tab = await browser.tabs.get(tabId);
+      const url = new URL(tab.url);
+      const base = url.origin + url.pathname + url.search;
+      sendNext(base);
     });
   }
 
