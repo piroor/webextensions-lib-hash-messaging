@@ -13,7 +13,7 @@ const HashMessagingBG = (() => {
   const incomingBuffers = new Map();
   const messageHandlers = [];
 
-  const tabState = new Map(); 
+  const tabState = new Map();
   // tabId -> { queue: [], isSending: false, secret: null, initPromise: null }
 
   function ensureTabState(tabId) {
@@ -104,7 +104,7 @@ const HashMessagingBG = (() => {
         const h = url.hash.slice(1);
 
         const state = ensureTabState(tabId);
-        if (h === `ACK:${state.secret}:${id}:${index-1}`) {
+        if (h === `ACK:${state.secret}:${id}:${index - 1}`) {
           if (index < total) {
             sendNext(url.origin + url.pathname + url.search);
           } else {
@@ -179,6 +179,14 @@ const HashMessagingBG = (() => {
   function handleIncoming(tabId, urlStr) {
     const url = new URL(urlStr);
     const h = url.hash.slice(1);
+
+    if (h === 'REQ-INIT') {
+      const extUrl = browser.runtime.getURL('');
+      if (urlStr.startsWith(extUrl)) {
+        init(tabId);
+      }
+      return;
+    }
 
     if (!h.startsWith('MSG:')) return;
 

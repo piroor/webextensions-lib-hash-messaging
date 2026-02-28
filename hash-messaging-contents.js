@@ -13,6 +13,8 @@ const HashMessagingContents = (() => {
   const incomingBuffers = new Map();
   const messageHandlers = [];
 
+  let initPromise = null;
+
   const sendQueue = [];
   let isSending = false;
   let secret = null;
@@ -128,6 +130,10 @@ const HashMessagingContents = (() => {
     if (h.startsWith('INIT:')) {
       secret = h.slice(5);
       sendRaw(`ACK-INIT:${secret}`);
+      if (initPromise) {
+        initPromise.resolve();
+        initPromise = null;
+      }
       processQueue();
       return;
     }
@@ -190,9 +196,21 @@ const HashMessagingContents = (() => {
   window.addEventListener('hashchange', handleIncoming);
   handleIncoming();
 
+  function requestInit() {
+    if (secret) return Promise.resolve();
+    if (!initPromise) {
+      let resolve;
+      const promise = new Promise(r => resolve = r);
+      initPromise = { promise, resolve };
+      sendRaw('REQ-INIT');
+    }
+    return initPromise.promise;
+  }
+
   return {
     sendMessage,
     onMessage,
+    requestInit,
     get initialized() {
       return !!secret;
     },
