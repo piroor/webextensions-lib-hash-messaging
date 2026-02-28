@@ -1,0 +1,99 @@
+# WebExtensions Lib Hash Messaging
+
+A lightweight messaging library for Firefox extensions to communicate between WebExtension background scripts and content pages (such as option pages or embedded pages served by the extension itself) *without* directly using the `browser.runtime.sendMessage` or `browser.tabs.sendMessage` APIs in the page. 
+
+It passes messages by chunking and encoding them through the URL fragment identifier (`location.hash`). 
+
+## Motivation
+
+When a user has a tab open to an extension's internal page (like a customized new tab page or an options page), Firefox will automatically close that tab if the extension is unloaded, updated, or reloaded—provided the page is utilizing any WebExtensions APIs.
+
+For extensions that manage and retain tabs structurally (such as Tree Style Tab and similar tree-based tab managers), having tabs automatically closed when the extension is updated destroys the user's customized tab tree.
+
+To prevent Firefox from automatically closing these internal pages upon extension updates, the page must **entirely avoid calling any WebExtensions API directly**. Instead, the actual API calls and extension logic must be outsourced to the extension's background script, and the results passed back to the content page.
+
+However, the standard way for a content script or extension page to communicate with the background script is by calling `browser.runtime.sendMessage`—which is itself a WebExtensions API, triggering the exact auto-close behavior we want to avoid.
+
+This library was created specifically to solve this final bottleneck. It provides a reliable workaround for bidirectional communication between the content area and the background script **without** needing to invoke any WebExtensions APIs from the content side.
+
+## Security model
+
+Originally, the hash messaging allowed an arbitrary page to exchange messages blindly if they knew the protocol, leading to potential security vulnerabilities if an untrusted web page started sending messages to the extension.
+
+To prevent this, this library requires **explicit initialization** with a one-time secret key. Communication is only possible under two conditions:
+1. **Pushed by the extension**: The background script proactively calls `init(tabId)` to establish a secret key with the content script in that tab.
+2. **Requested by the extension's own pages**: A page provided by the extension itself (i.e., its URL starts with `moz-extension://` or `chrome-extension://`) can request initialization via `requestInit()`. The background script strictly validates the sender's URL before complying. 
+
+Any messages lacking the correct secret key, or initialization requests from regular web pages, are securely ignored.
+
+## Usage: Background Script (`hash-messaging-bg.js`)
+
+Include the script in your background page or worker.
+
+```javascript
+import HashMessagingBG from './hash-messaging-bg.js';
+
+// Listen for incoming messages from content scripts
+HashMessagingBG.onMessage(async (message, sender) => {
+  if (message.type === 'GREETING') {
+    console.log(`Received from Tab ${sender.tab.id}:`, message.payload);
+    // You can optionally return a response which will be sent back
+    return { reply: 'Hello from Background!' };
+  }
+});
+
+// To proactively initialize a tab and send a message to it
+browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  if (changeInfo.status === 'complete' && tab.url.startsWith('https://example.com/')) {
+    // 1. Initialize the secure connection with the tab
+    await HashMessagingBG.init(tabId);
+    
+    // 2. Send a message to the content script in that tab
+    const response = await HashMessagingBG.sendMessage(tabId, {
+      type: 'INIT_DATA',
+      payload: { userId: 123 }
+    });
+    console.log('Content script replied:', response);
+  }
+});
+```
+
+*Note: You do not need to manually call `HashMessagingBG.init(tabId)` if the content script is hosted on an extension page and requests initialization itself.*
+
+## Usage: Content Script / Extension Page (`hash-messaging-contents.js`)
+
+Include the script in your content page.
+
+```javascript
+import HashMessagingContents from './hash-messaging-contents.js';
+
+// Listen for incoming messages from the background script
+HashMessagingContents.onMessage(async (message, sender) => {
+  if (message.type === 'INIT_DATA') {
+    console.log('Received data from background:', message.payload);
+    return { status: 'ok' };
+  }
+});
+
+// If this script is running in an extension-provided page (e.g., options page),
+// you can proactively request a secure connection to the background.
+async function startApp() {
+  try {
+    // Request the background script to initialize the connection.
+    // The background script will verify that this page's URL belongs to the extension.
+    await HashMessagingContents.requestInit();
+    console.log('Hash messaging initialized securely.');
+    
+    // Once initialized, you can send messages to the background script
+    const response = await HashMessagingContents.sendMessage({
+      type: 'GREETING',
+      payload: 'Hello from the extension page!'
+    });
+    console.log('Background replied:', response);
+  } catch (error) {
+    console.error('Failed to initialize messaging or send message:', error);
+  }
+}
+
+startApp();
+```
