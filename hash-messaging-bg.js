@@ -14,13 +14,43 @@ const HashMessagingBG = (() => {
   const messageHandlers = [];
 
   const tabState = new Map(); 
-  // tabId -> { queue: [], isSending: false }
+  // tabId -> { queue: [], isSending: false, secret: null, initPromise: null }
 
   function ensureTabState(tabId) {
     if (!tabState.has(tabId)) {
-      tabState.set(tabId, { queue: [], isSending: false });
+      tabState.set(tabId, { queue: [], isSending: false, secret: null, initPromise: null });
     }
     return tabState.get(tabId);
+  }
+
+  browser.tabs.onRemoved.addListener((tabId) => {
+    tabState.delete(tabId);
+  });
+
+  function init(tabId) {
+    const state = ensureTabState(tabId);
+    if (state.secret && state.initPromise) {
+      return state.initPromise;
+    }
+    state.secret = generateId();
+    state.initPromise = new Promise(resolve => {
+      function onUpdated(updatedTabId, info, tab) {
+        if (updatedTabId !== tabId || !info.url) return;
+        const url = new URL(info.url);
+        const h = url.hash.slice(1);
+        if (h === `ACK-INIT:${state.secret}`) {
+          browser.tabs.onUpdated.removeListener(onUpdated);
+          resolve();
+        }
+      }
+      browser.tabs.onUpdated.addListener(onUpdated);
+      browser.tabs.get(tabId).then(tab => {
+        if (!tab.url) return;
+        const url = new URL(tab.url);
+        updateTabHash(tabId, url.origin + url.pathname + url.search, `INIT:${state.secret}`);
+      });
+    });
+    return state.initPromise;
   }
 
   function encodeBase64(str) {
@@ -73,7 +103,8 @@ const HashMessagingBG = (() => {
         const url = new URL(info.url);
         const h = url.hash.slice(1);
 
-        if (h === `ACK:${id}:${index-1}`) {
+        const state = ensureTabState(tabId);
+        if (h === `ACK:${state.secret}:${id}:${index-1}`) {
           if (index < total) {
             sendNext(url.origin + url.pathname + url.search);
           } else {
@@ -84,8 +115,9 @@ const HashMessagingBG = (() => {
       }
 
       function sendNext(baseUrl) {
+        const state = ensureTabState(tabId);
         const payload =
-          `MSG:${type}:${id}:${index}/${total}:${chunks[index]}`;
+          `MSG:${state.secret}:${type}:${id}:${index}/${total}:${chunks[index]}`;
         updateTabHash(tabId, baseUrl, payload);
         index++;
       }
@@ -99,12 +131,16 @@ const HashMessagingBG = (() => {
     });
   }
 
-  function processQueue(tabId) {
+  async function processQueue(tabId) {
     const state = ensureTabState(tabId);
     if (state.isSending) return;
     if (state.queue.length === 0) return;
 
     state.isSending = true;
+
+    if (!state.secret) {
+      await init(tabId);
+    }
 
     const { message, resolve, reject } = state.queue.shift();
     const id = generateId();
@@ -146,10 +182,13 @@ const HashMessagingBG = (() => {
 
     if (!h.startsWith('MSG:')) return;
 
-    const match = h.match(/^MSG:(REQ|RES):([^:]+):([^:]+):(.+)$/);
+    const match = h.match(/^MSG:([^:]+):(REQ|RES):([^:]+):([^:]+):(.+)$/);
     if (!match) return;
 
-    const [, type, id, seq, data] = match;
+    const state = ensureTabState(tabId);
+    if (!state.secret || match[1] !== state.secret) return;
+
+    const [, , type, id, seq, data] = match;
     const [indexStr, totalStr] = seq.split('/');
     const index = parseInt(indexStr, 10);
     const total = parseInt(totalStr, 10);
@@ -162,7 +201,7 @@ const HashMessagingBG = (() => {
     buffer[index] = data;
 
     updateTabHash(tabId, url.origin + url.pathname + url.search,
-      `ACK:${id}:${index}`);
+      `ACK:${state.secret}:${id}:${index}`);
 
     if (buffer.filter(v => v !== undefined).length === total) {
       const full = buffer.join('');
@@ -204,7 +243,7 @@ const HashMessagingBG = (() => {
     handleIncoming(tabId, info.url);
   });
 
-  return { sendMessage, onMessage };
+  return { sendMessage, onMessage, init };
 })();
 
 export default HashMessagingBG;

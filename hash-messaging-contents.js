@@ -15,6 +15,7 @@ const HashMessagingContents = (() => {
 
   const sendQueue = [];
   let isSending = false;
+  let secret = null;
 
   function encodeBase64(str) {
     return btoa(unescape(encodeURIComponent(str)))
@@ -60,7 +61,7 @@ const HashMessagingContents = (() => {
     return new Promise(resolve => {
       function handleAck() {
         const h = location.hash.slice(1);
-        if (h === `ACK:${id}:${index-1}`) {
+        if (h === `ACK:${secret}:${id}:${index - 1}`) {
           if (index < total) {
             sendNext();
           } else {
@@ -72,7 +73,7 @@ const HashMessagingContents = (() => {
 
       function sendNext() {
         const payload =
-          `MSG:${type}:${id}:${index}/${total}:${chunks[index]}`;
+          `MSG:${secret}:${type}:${id}:${index}/${total}:${chunks[index]}`;
         sendRaw(payload);
         index++;
       }
@@ -85,6 +86,7 @@ const HashMessagingContents = (() => {
   function processQueue() {
     if (isSending) return;
     if (sendQueue.length === 0) return;
+    if (!secret) return;
 
     isSending = true;
 
@@ -122,12 +124,22 @@ const HashMessagingContents = (() => {
 
   function handleIncoming() {
     const h = location.hash.slice(1);
+
+    if (h.startsWith('INIT:')) {
+      secret = h.slice(5);
+      sendRaw(`ACK-INIT:${secret}`);
+      processQueue();
+      return;
+    }
+
     if (!h.startsWith('MSG:')) return;
 
-    const match = h.match(/^MSG:(REQ|RES):([^:]+):([^:]+):(.+)$/);
+    const match = h.match(/^MSG:([^:]+):(REQ|RES):([^:]+):([^:]+):(.+)$/);
     if (!match) return;
 
-    const [, type, id, seq, data] = match;
+    if (match[1] !== secret) return;
+
+    const [, , type, id, seq, data] = match;
     const [indexStr, totalStr] = seq.split('/');
     const index = parseInt(indexStr, 10);
     const total = parseInt(totalStr, 10);
@@ -139,7 +151,7 @@ const HashMessagingContents = (() => {
     const buffer = incomingBuffers.get(id);
     buffer[index] = data;
 
-    sendRaw(`ACK:${id}:${index}`);
+    sendRaw(`ACK:${secret}:${id}:${index}`);
 
     if (buffer.filter(v => v !== undefined).length === total) {
       const full = buffer.join('');
@@ -176,6 +188,7 @@ const HashMessagingContents = (() => {
   }
 
   window.addEventListener('hashchange', handleIncoming);
+  handleIncoming();
 
   return { sendMessage, onMessage };
 })();
