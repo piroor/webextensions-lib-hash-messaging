@@ -27,9 +27,9 @@ const HashMessagingBG = (() => {
     tabState.delete(tabId);
   });
 
-  function init(tabId) {
+  function init(tabId, force) {
     const state = ensureTabState(tabId);
-    if (state.secret && state.initPromise) {
+    if (state.secret && state.initPromise && !force) {
       return state.initPromise;
     }
     state.secret = generateId();
@@ -183,7 +183,7 @@ const HashMessagingBG = (() => {
     if (h === 'REQ-INIT') {
       const extUrl = browser.runtime.getURL('');
       if (urlStr.startsWith(extUrl)) {
-        init(tabId);
+        init(tabId, true);
       }
       return;
     }
