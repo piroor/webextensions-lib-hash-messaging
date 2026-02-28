@@ -190,7 +190,13 @@ const HashMessagingContents = (() => {
   window.addEventListener('hashchange', handleIncoming);
   handleIncoming();
 
-  return { sendMessage, onMessage };
+  return {
+    sendMessage,
+    onMessage,
+    get initialized() {
+      return !!secret;
+    },
+  };
 })();
 
 export default HashMessagingContents;
