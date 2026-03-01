@@ -14,7 +14,7 @@ For extensions that manage and retain tabs structurally (such as Tree Style Tab 
 
 To prevent Firefox from automatically closing these internal pages upon extension updates, the page must **entirely avoid calling any WebExtensions API directly**. Instead, the actual API calls and extension logic must be outsourced to the extension's background script, and the results passed back to the content page.
 
-However, the standard way for a content script or extension page to communicate with the background script is by calling `browser.runtime.sendMessage`—which is itself a WebExtensions API, triggering the exact auto-close behavior we want to avoid.
+However, the standard way for a content script or extension page to communicate with the background script is by calling `browser.runtime.sendMessage`-which is itself a WebExtensions API, triggering the exact auto-close behavior we want to avoid.
 
 This library was created specifically to solve this final bottleneck. It provides a reliable workaround for bidirectional communication between the content area and the background script **without** needing to invoke any WebExtensions APIs from the content side.
 
