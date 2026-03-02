@@ -45,7 +45,7 @@ const HashMessagingBG = (() => {
       }
       browser.tabs.onUpdated.addListener(onUpdated);
       browser.tabs.get(tabId).then(tab => {
-        if (!tab.url) return;
+        if (!tab.url || tab.url == 'about:blank') return;
         const url = new URL(tab.url);
         updateTabHash(tabId, url.origin + url.pathname + url.search, `INIT:${state.secret}`);
       });
