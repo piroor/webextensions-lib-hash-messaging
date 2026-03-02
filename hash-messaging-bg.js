@@ -6,7 +6,7 @@
 'use strict';
 
 const HashMessagingBG = (() => {
-  const MAX_HASH_BYTES = 4000;
+  const MAX_HASH_BYTES = 6000;
   const OVERHEAD = 120;
 
   const pendingRequests = new Map();
