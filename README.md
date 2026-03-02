@@ -1,5 +1,7 @@
 # WebExtensions Lib Hash Messaging
 
+**Important note**: This project has merged to [Cross Context Messaging](https://github.com/piroor/webextensions-lib-cross-context-messaging) as an optional backend of the library. I recommend you to use it for better performance, because it automatically uses available faster backend if possible.
+
 A lightweight messaging library for Firefox extensions to communicate between WebExtension background scripts and content pages (such as option pages or embedded pages served by the extension itself) *without* directly using the `browser.runtime.sendMessage` or `browser.tabs.sendMessage` APIs in the page. 
 
 It passes messages by chunking and encoding them through the URL fragment identifier (`location.hash`). So this can bridge between the background script and contents scripts in default and non-default container tabs.
